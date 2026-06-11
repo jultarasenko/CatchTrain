@@ -46,10 +46,10 @@ def test_is_past_date():
 def test_compute_status_active_within_window():
     today = date(2026, 6, 11)
     assert compute_status("2026-06-11", today) == "active"
-    assert compute_status("2026-06-30", today) == "active"
+    assert compute_status("2026-07-01", today) == "active"
 
 
 def test_compute_status_pending_beyond_window():
     today = date(2026, 6, 11)
-    assert compute_status("2026-07-01", today) == "pending"
+    assert compute_status("2026-07-02", today) == "pending"
     assert compute_status("2026-07-15", today) == "pending"

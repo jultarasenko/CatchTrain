@@ -32,6 +32,6 @@ def is_valid_train_number(value: str) -> bool:
 
 
 def compute_status(travel_date: str, today: date) -> str:
-    """'pending' if travel_date is PENDING_WINDOW_DAYS or more away, else 'active'."""
+    """'pending' if travel_date is more than PENDING_WINDOW_DAYS away, else 'active'."""
     days_away = (date.fromisoformat(travel_date) - today).days
-    return "pending" if days_away >= PENDING_WINDOW_DAYS else "active"
+    return "pending" if days_away > PENDING_WINDOW_DAYS else "active"
