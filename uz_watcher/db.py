@@ -21,6 +21,23 @@ CREATE TABLE IF NOT EXISTS subscriptions (
     notified_trains TEXT NOT NULL DEFAULT '[]',
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+CREATE TABLE IF NOT EXISTS events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_type TEXT NOT NULL,
+    chat_id INTEGER,
+    subscription_id INTEGER,
+    station_from_id INTEGER,
+    station_to_id INTEGER,
+    travel_date TEXT,
+    train_number TEXT,
+    status_code INTEGER,
+    extra TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_events_type ON events (event_type);
+CREATE INDEX IF NOT EXISTS idx_events_created_at ON events (created_at);
 """
 
 
@@ -107,6 +124,40 @@ class Database:
             await db.execute(
                 "UPDATE subscriptions SET notified_trains = ? WHERE id = ?",
                 (json.dumps(sorted(train_numbers), ensure_ascii=False), sub_id),
+            )
+            await db.commit()
+
+    async def log_event(
+        self,
+        event_type: str,
+        chat_id: int | None = None,
+        subscription_id: int | None = None,
+        station_from_id: int | None = None,
+        station_to_id: int | None = None,
+        travel_date: str | None = None,
+        train_number: str | None = None,
+        status_code: int | None = None,
+        **extra,
+    ) -> None:
+        async with aiosqlite.connect(self._path) as db:
+            await db.execute(
+                """
+                INSERT INTO events (
+                    event_type, chat_id, subscription_id, station_from_id,
+                    station_to_id, travel_date, train_number, status_code, extra
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    event_type,
+                    chat_id,
+                    subscription_id,
+                    station_from_id,
+                    station_to_id,
+                    travel_date,
+                    str(train_number) if train_number is not None else None,
+                    status_code,
+                    json.dumps(extra, ensure_ascii=False) if extra else None,
+                ),
             )
             await db.commit()
 
