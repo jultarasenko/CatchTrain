@@ -17,7 +17,7 @@ from uz_watcher.analytics import record_event
 from uz_watcher.db import Database
 from uz_watcher.poller import PollerManager
 from uz_watcher.uz_client import UZClient
-from uz_watcher.validation import is_valid_date
+from uz_watcher.validation import is_valid_date, is_valid_train_number
 
 MAX_STATION_OPTIONS = 8
 MAX_SUBSCRIPTIONS_PER_CHAT = 5
@@ -143,6 +143,13 @@ async def process_any_train(callback: CallbackQuery, state: FSMContext, db: Data
 async def process_train_numbers(message: Message, state: FSMContext, db: Database, pollers: PollerManager) -> None:
     raw = (message.text or "").strip()
     train_numbers = [n.strip().upper() for n in raw.split(",") if n.strip()] or None
+
+    if train_numbers:
+        for number in train_numbers:
+            if not is_valid_train_number(number):
+                await message.answer(texts.INVALID_TRAIN_NUMBER.format(value=number))
+                return
+
     await _save_subscription(message, state, db, pollers, train_numbers=train_numbers)
 
 
