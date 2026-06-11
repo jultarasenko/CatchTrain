@@ -142,7 +142,7 @@ async def process_any_train(callback: CallbackQuery, state: FSMContext, db: Data
 @router.message(StateFilter(WatchForm.train_numbers))
 async def process_train_numbers(message: Message, state: FSMContext, db: Database, pollers: PollerManager) -> None:
     raw = (message.text or "").strip()
-    train_numbers = [n.strip() for n in raw.split(",") if n.strip()] or None
+    train_numbers = [n.strip().upper() for n in raw.split(",") if n.strip()] or None
     await _save_subscription(message, state, db, pollers, train_numbers=train_numbers)
 
 
