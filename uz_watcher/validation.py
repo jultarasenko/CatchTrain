@@ -7,7 +7,7 @@ from datetime import date, timedelta
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 TRAIN_NUMBER_RE = re.compile(r"^\d{3}[А-ЯҐЄІЇ]$")
 
-PENDING_WINDOW_DAYS = 20
+PENDING_WINDOW_DAYS = 19
 
 
 def is_valid_date(value: str) -> bool:
@@ -32,6 +32,6 @@ def is_valid_train_number(value: str) -> bool:
 
 
 def compute_status(travel_date: str, today: date) -> str:
-    """'pending' if travel_date is more than PENDING_WINDOW_DAYS away, else 'active'."""
+    """'pending' if travel_date is PENDING_WINDOW_DAYS or more away, else 'active'."""
     days_away = (date.fromisoformat(travel_date) - today).days
-    return "pending" if days_away > PENDING_WINDOW_DAYS else "active"
+    return "pending" if days_away >= PENDING_WINDOW_DAYS else "active"
