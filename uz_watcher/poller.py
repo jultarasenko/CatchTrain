@@ -8,6 +8,7 @@ import random
 from aiogram import Bot
 
 from uz_watcher import texts
+from uz_watcher.analytics import log_event
 from uz_watcher.db import Database
 from uz_watcher.uz_client import UZClient, UZClientError, extract_seat_summary
 
@@ -46,6 +47,11 @@ class PollerManager:
                         await self._check_once(client, subscription, notified)
                     except UZClientError as exc:
                         logger.error("UZ API error for subscription #%s: %s", sub_id, exc)
+                        log_event(
+                            "uz_api_error",
+                            subscription_id=sub_id,
+                            status_code=exc.status_code,
+                        )
                     except Exception:
                         logger.exception("Unexpected error polling subscription #%s", sub_id)
 
@@ -102,6 +108,14 @@ class PollerManager:
             )
             logger.info("Subscription #%s: found availability %s", sub_id, train)
             await self._bot.send_message(chat_id, message, parse_mode="Markdown")
+            log_event(
+                "notification_sent",
+                subscription_id=sub_id,
+                chat_id=chat_id,
+                station_from_id=subscription["station_from_id"],
+                station_to_id=subscription["station_to_id"],
+                train_number=train["train_number"],
+            )
 
         if notified - still_available:
             notified.intersection_update(still_available)

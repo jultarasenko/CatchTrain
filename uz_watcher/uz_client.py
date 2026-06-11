@@ -29,7 +29,9 @@ DEFAULT_HEADERS = {
 
 
 class UZClientError(RuntimeError):
-    pass
+    def __init__(self, message: str, status_code: int | None = None):
+        super().__init__(message)
+        self.status_code = status_code
 
 
 class UZClient:
@@ -76,7 +78,7 @@ class UZClient:
             },
         )
         if resp.status_code >= 400:
-            raise UZClientError(f"UZ API error {resp.status_code}: {resp.text[:300]}")
+            raise UZClientError(f"UZ API error {resp.status_code}: {resp.text[:300]}", status_code=resp.status_code)
         return resp.json()
 
 

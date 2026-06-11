@@ -13,6 +13,7 @@ from aiogram.types import (
 )
 
 from uz_watcher import texts
+from uz_watcher.analytics import log_event
 from uz_watcher.db import Database
 from uz_watcher.poller import PollerManager
 from uz_watcher.uz_client import UZClient
@@ -49,17 +50,20 @@ def _any_train_keyboard() -> InlineKeyboardMarkup:
 
 @router.message(CommandStart())
 async def cmd_start(message: Message) -> None:
+    log_event("command", name="start", chat_id=message.chat.id)
     await message.answer(texts.WELCOME)
 
 
 @router.message(Command("cancel"))
 async def cmd_cancel(message: Message, state: FSMContext) -> None:
+    log_event("command", name="cancel", chat_id=message.chat.id)
     await state.clear()
     await message.answer(texts.CANCELLED_ACTION)
 
 
 @router.message(Command("watch"))
 async def cmd_watch(message: Message, state: FSMContext, db: Database) -> None:
+    log_event("command", name="watch", chat_id=message.chat.id)
     count = await db.count_subscriptions_for_chat(message.chat.id)
     if count >= MAX_SUBSCRIPTIONS_PER_CHAT:
         await message.answer(texts.SUBSCRIPTION_LIMIT_REACHED.format(limit=MAX_SUBSCRIPTIONS_PER_CHAT))
@@ -179,6 +183,15 @@ async def _save_subscription(
     }
     pollers.start(subscription)
 
+    log_event(
+        "subscription_created",
+        subscription_id=sub_id,
+        chat_id=message.chat.id,
+        station_from_id=data["from_id"],
+        station_to_id=data["to_id"],
+        date=data["date"],
+    )
+
     trains_label = ", ".join(train_numbers) if train_numbers else texts.ANY_TRAIN_LABEL
     await message.answer(
         texts.SUBSCRIPTION_SAVED.format(
@@ -192,6 +205,7 @@ async def _save_subscription(
 
 @router.message(Command("my"))
 async def cmd_my(message: Message, db: Database) -> None:
+    log_event("command", name="my", chat_id=message.chat.id)
     subscriptions = await db.get_subscriptions_for_chat(message.chat.id)
     if not subscriptions:
         await message.answer(texts.NO_SUBSCRIPTIONS)
@@ -223,6 +237,7 @@ async def process_cancel_subscription(callback: CallbackQuery, db: Database, pol
     deleted = await db.delete_subscription(sub_id, callback.message.chat.id)
     if deleted:
         pollers.stop(sub_id)
+        log_event("subscription_cancelled", subscription_id=sub_id, chat_id=callback.message.chat.id)
         await callback.message.answer(texts.SUBSCRIPTION_CANCELLED.format(id=sub_id))
     else:
         await callback.message.answer(texts.SUBSCRIPTION_NOT_FOUND)
