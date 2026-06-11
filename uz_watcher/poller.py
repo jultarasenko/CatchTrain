@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import random
 
 from aiogram import Bot
 
@@ -38,6 +39,7 @@ class PollerManager:
         notified = set(subscription["notified_trains"])
 
         try:
+            await asyncio.sleep(random.uniform(0, subscription["check_interval"]))
             async with UZClient() as client:
                 while True:
                     try:
@@ -47,7 +49,8 @@ class PollerManager:
                     except Exception:
                         logger.exception("Unexpected error polling subscription #%s", sub_id)
 
-                    await asyncio.sleep(subscription["check_interval"])
+                    jitter = random.uniform(-2, 2)
+                    await asyncio.sleep(max(1, subscription["check_interval"] + jitter))
         except asyncio.CancelledError:
             logger.info("Stopped polling subscription #%s (chat %s)", sub_id, chat_id)
             raise
