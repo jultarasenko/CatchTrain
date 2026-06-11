@@ -1,0 +1,9 @@
+services:
+  uz-ticket-watcher:
+    build: .
+    container_name: uz_ticket_watcher
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - ./data:/data
