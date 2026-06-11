@@ -1,4 +1,4 @@
-"""Client for the app.uz.gov.ua JSON API used by the booking.uz.gov.ua frontend.
+"""Async client for the app.uz.gov.ua JSON API used by the booking.uz.gov.ua frontend.
 
 The site does not publish an official API spec, so this client targets the
 endpoints used by the website's own frontend (subject to change by UZ).
@@ -33,41 +33,41 @@ class UZClientError(RuntimeError):
 
 
 class UZClient:
-    """Thin wrapper around the app.uz.gov.ua JSON API."""
+    """Thin async wrapper around the app.uz.gov.ua JSON API."""
 
     def __init__(self, timeout: float = 15.0):
         headers = dict(DEFAULT_HEADERS)
         headers["x-session-id"] = str(uuid.uuid4())
-        self._client = httpx.Client(
+        self._client = httpx.AsyncClient(
             base_url=BASE_URL,
             headers=headers,
             timeout=timeout,
             follow_redirects=True,
         )
 
-    def close(self) -> None:
-        self._client.close()
+    async def close(self) -> None:
+        await self._client.aclose()
 
-    def __enter__(self) -> "UZClient":
+    async def __aenter__(self) -> "UZClient":
         return self
 
-    def __exit__(self, *exc_info) -> None:
-        self.close()
+    async def __aexit__(self, *exc_info) -> None:
+        await self.close()
 
-    def find_station(self, query: str) -> list[dict]:
+    async def find_station(self, query: str) -> list[dict]:
         """Look up station name -> list of {id, name} candidates."""
-        resp = self._client.get("/api/stations", params={"search": query})
+        resp = await self._client.get("/api/stations", params={"search": query})
         resp.raise_for_status()
         return resp.json()
 
-    def search_trains(self, station_id_from: str, station_id_to: str, date: str) -> list[dict]:
+    async def search_trains(self, station_id_from: int, station_id_to: int, date: str) -> list[dict]:
         """Search trains for a route on a given date (YYYY-MM-DD).
 
         Returns the raw JSON response (a list of trip objects) so callers can
         adapt to the current API shape without changing this method's
         signature.
         """
-        resp = self._client.get(
+        resp = await self._client.get(
             "/api/trips",
             params={
                 "station_from_id": station_id_from,
