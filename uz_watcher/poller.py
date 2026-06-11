@@ -97,6 +97,7 @@ class PollerManager:
                 date=subscription["travel_date"],
             )
             message = texts.TICKETS_AVAILABLE.format(
+                subscription_id=sub_id,
                 from_name=subscription["station_from_name"],
                 to_name=subscription["station_to_name"],
                 date=subscription["travel_date"],
