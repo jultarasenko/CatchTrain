@@ -6,11 +6,13 @@ seats appear on a route, date, and (optionally) train numbers they choose.
 
 ## Why
 
-Popular UZ routes often sell out within seconds of opening, but the booking
-site has no built-in "notify me" feature — travelers are left refreshing the
-page manually. This bot automates that: each user sets up a watch once, and
-gets pinged on Telegram the instant matching seats appear, with a direct link
-to book.
+Ukrzaliznytsia is changing its train schedule starting June 28, and many
+trains haven't been listed for booking yet. Once a train is added, tickets
+can go on sale at any moment — but until it appears on the site, there's no
+way to track it or get notified. This bot automates the waiting: each user
+sets up a watch once, and gets pinged on Telegram the instant a matching
+route, date, and train becomes available for booking, with a direct link to
+book.
 
 ## How it works
 
@@ -18,7 +20,7 @@ to book.
   the bot (`/watch`): pick departure station, destination station, date, and
   optionally specific train numbers.
 - The bot starts an independent background poller for each subscription,
-  checking the UZ ticket API on an interval (default 60s).
+  checking the UZ ticket API every 60 seconds.
 - When matching seats become available, the bot sends a Telegram message to
   that user.
 - Subscriptions are stored in a local SQLite database so they survive
