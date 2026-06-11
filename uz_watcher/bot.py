@@ -1,6 +1,8 @@
 """Telegram bot: conversation flow for creating and managing subscriptions."""
 from __future__ import annotations
 
+from datetime import datetime
+
 from aiogram import Dispatcher, F, Router
 from aiogram.filters import Command, CommandStart, StateFilter
 from aiogram.fsm.context import FSMContext
@@ -16,8 +18,8 @@ from uz_watcher import texts
 from uz_watcher.analytics import record_event
 from uz_watcher.db import Database
 from uz_watcher.poller import PollerManager
-from uz_watcher.uz_client import UZClient
-from uz_watcher.validation import is_valid_date, is_valid_train_number
+from uz_watcher.uz_client import KYIV_TZ, UZClient
+from uz_watcher.validation import compute_status, is_past_date, is_valid_date, is_valid_train_number
 
 MAX_STATION_OPTIONS = 8
 MAX_SUBSCRIPTIONS_PER_CHAT = 5
@@ -128,6 +130,11 @@ async def process_date(message: Message, state: FSMContext) -> None:
         await message.answer(texts.INVALID_DATE)
         return
 
+    today = datetime.now(KYIV_TZ).date()
+    if is_past_date(value, today):
+        await message.answer(texts.INVALID_DATE_PAST)
+        return
+
     await state.update_data(date=value)
     await state.set_state(WatchForm.train_numbers)
     await message.answer(texts.ASK_TRAIN_NUMBERS, reply_markup=_any_train_keyboard())
@@ -162,6 +169,9 @@ async def _save_subscription(
 ) -> None:
     data = await state.get_data()
 
+    today = datetime.now(KYIV_TZ).date()
+    status = compute_status(data["date"], today)
+
     sub_id = await db.add_subscription(
         chat_id=message.chat.id,
         station_from_id=data["from_id"],
@@ -172,23 +182,25 @@ async def _save_subscription(
         train_numbers=train_numbers,
         min_seats=1,
         check_interval=60,
+        status=status,
     )
     await state.clear()
 
-    subscription = {
-        "id": sub_id,
-        "chat_id": message.chat.id,
-        "station_from_id": data["from_id"],
-        "station_from_name": data["from_name"],
-        "station_to_id": data["to_id"],
-        "station_to_name": data["to_name"],
-        "travel_date": data["date"],
-        "train_numbers": train_numbers,
-        "min_seats": 1,
-        "check_interval": 60,
-        "notified_trains": set(),
-    }
-    pollers.start(subscription)
+    if status == "active":
+        subscription = {
+            "id": sub_id,
+            "chat_id": message.chat.id,
+            "station_from_id": data["from_id"],
+            "station_from_name": data["from_name"],
+            "station_to_id": data["to_id"],
+            "station_to_name": data["to_name"],
+            "travel_date": data["date"],
+            "train_numbers": train_numbers,
+            "min_seats": 1,
+            "check_interval": 60,
+            "notified_trains": set(),
+        }
+        pollers.start(subscription)
 
     await record_event(
         db,

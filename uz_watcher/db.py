@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS subscriptions (
     min_seats INTEGER NOT NULL DEFAULT 1,
     check_interval INTEGER NOT NULL DEFAULT 60,
     notified_trains TEXT NOT NULL DEFAULT '[]',
+    status TEXT NOT NULL DEFAULT 'active',
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -49,6 +50,12 @@ class Database:
     async def init(self) -> None:
         async with aiosqlite.connect(self._path) as db:
             await db.executescript(SCHEMA)
+            async with db.execute("PRAGMA table_info(subscriptions)") as cursor:
+                columns = {row[1] async for row in cursor}
+            if "status" not in columns:
+                await db.execute(
+                    "ALTER TABLE subscriptions ADD COLUMN status TEXT NOT NULL DEFAULT 'active'"
+                )
             await db.commit()
 
     async def add_subscription(
@@ -62,6 +69,7 @@ class Database:
         train_numbers: list[str] | None,
         min_seats: int,
         check_interval: int,
+        status: str = "active",
     ) -> int:
         async with aiosqlite.connect(self._path) as db:
             cursor = await db.execute(
@@ -69,8 +77,8 @@ class Database:
                 INSERT INTO subscriptions (
                     chat_id, station_from_id, station_from_name,
                     station_to_id, station_to_name, travel_date,
-                    train_numbers, min_seats, check_interval
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    train_numbers, min_seats, check_interval, status
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     chat_id,
@@ -82,6 +90,7 @@ class Database:
                     json.dumps(train_numbers, ensure_ascii=False) if train_numbers else None,
                     min_seats,
                     check_interval,
+                    status,
                 ),
             )
             await db.commit()
@@ -118,6 +127,18 @@ class Database:
             )
             await db.commit()
             return cursor.rowcount > 0
+
+    async def delete_subscription_by_id(self, sub_id: int) -> None:
+        async with aiosqlite.connect(self._path) as db:
+            await db.execute("DELETE FROM subscriptions WHERE id = ?", (sub_id,))
+            await db.commit()
+
+    async def update_status(self, sub_id: int, status: str) -> None:
+        async with aiosqlite.connect(self._path) as db:
+            await db.execute(
+                "UPDATE subscriptions SET status = ? WHERE id = ?", (status, sub_id)
+            )
+            await db.commit()
 
     async def update_notified_trains(self, sub_id: int, train_numbers: set[str]) -> None:
         async with aiosqlite.connect(self._path) as db:

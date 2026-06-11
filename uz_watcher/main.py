@@ -5,6 +5,7 @@ import asyncio
 import logging
 import os
 import sys
+from datetime import datetime
 
 from aiogram import Bot
 from dotenv import load_dotenv
@@ -12,6 +13,9 @@ from dotenv import load_dotenv
 from uz_watcher.bot import create_dispatcher
 from uz_watcher.db import Database
 from uz_watcher.poller import PollerManager
+from uz_watcher.scheduler import run_daily_jobs
+from uz_watcher.uz_client import KYIV_TZ
+from uz_watcher.validation import compute_status
 
 logging.basicConfig(
     level=logging.INFO,
@@ -34,14 +38,24 @@ async def main() -> None:
     db = Database(db_path)
     await db.init()
 
+    today = datetime.now(KYIV_TZ).date()
     pollers = PollerManager(bot, db)
     for subscription in await db.get_all_subscriptions():
-        pollers.start(subscription)
+        correct_status = compute_status(subscription["travel_date"], today)
+        if correct_status != subscription["status"]:
+            await db.update_status(subscription["id"], correct_status)
+            subscription["status"] = correct_status
+        if subscription["status"] == "active":
+            pollers.start(subscription)
 
     dispatcher = create_dispatcher(db, pollers)
+    scheduler_task = asyncio.create_task(run_daily_jobs(bot, db, pollers))
 
     logger.info("Starting bot...")
-    await dispatcher.start_polling(bot)
+    try:
+        await dispatcher.start_polling(bot)
+    finally:
+        scheduler_task.cancel()
 
 
 if __name__ == "__main__":
