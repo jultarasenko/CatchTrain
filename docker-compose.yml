@@ -7,3 +7,12 @@ services:
       - .env
     volumes:
       - ./data:/data
+
+  watchdog:
+    build:
+      context: .
+      dockerfile: watchdog/Dockerfile
+    container_name: uz_watchdog
+    restart: unless-stopped
+    env_file:
+      - .env
