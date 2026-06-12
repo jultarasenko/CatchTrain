@@ -17,7 +17,7 @@ CREATE TABLE IF NOT EXISTS subscriptions (
     travel_date TEXT NOT NULL,
     train_numbers TEXT,
     min_seats INTEGER NOT NULL DEFAULT 1,
-    check_interval INTEGER NOT NULL DEFAULT 60,
+    check_interval INTEGER NOT NULL DEFAULT 180,
     notified_trains TEXT NOT NULL DEFAULT '[]',
     status TEXT NOT NULL DEFAULT 'active',
     created_at TEXT NOT NULL DEFAULT (datetime('now'))

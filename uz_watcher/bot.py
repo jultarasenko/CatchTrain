@@ -181,7 +181,7 @@ async def _save_subscription(
         travel_date=data["date"],
         train_numbers=train_numbers,
         min_seats=1,
-        check_interval=60,
+        check_interval=180,
         status=status,
     )
     await state.clear()
@@ -197,7 +197,7 @@ async def _save_subscription(
             "travel_date": data["date"],
             "train_numbers": train_numbers,
             "min_seats": 1,
-            "check_interval": 60,
+            "check_interval": 180,
             "notified_trains": set(),
         }
         pollers.start(subscription)
