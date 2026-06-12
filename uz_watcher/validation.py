@@ -7,7 +7,7 @@ from datetime import date, timedelta
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 TRAIN_NUMBER_RE = re.compile(r"^\d{3}[А-ЯҐЄІЇ]$")
 
-PENDING_WINDOW_DAYS = 19
+PENDING_WINDOW_DAYS = 20
 
 
 def is_valid_date(value: str) -> bool:
