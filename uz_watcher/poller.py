@@ -6,6 +6,7 @@ import logging
 import random
 
 from aiogram import Bot
+from aiogram.exceptions import TelegramForbiddenError
 
 from uz_watcher import texts
 from uz_watcher.analytics import record_event
@@ -45,6 +46,20 @@ class PollerManager:
                 while True:
                     try:
                         await self._check_once(client, subscription, notified)
+                    except TelegramForbiddenError:
+                        logger.warning(
+                            "Bot blocked by user, removing subscription #%s (chat %s)",
+                            sub_id, chat_id,
+                        )
+                        await self._db.delete_subscription_by_id(sub_id)
+                        await record_event(
+                            self._db,
+                            "subscription_removed_blocked",
+                            subscription_id=sub_id,
+                            chat_id=chat_id,
+                        )
+                        self._tasks.pop(sub_id, None)
+                        return
                     except UZClientError as exc:
                         logger.error("UZ API error for subscription #%s: %s", sub_id, exc)
                         await record_event(
