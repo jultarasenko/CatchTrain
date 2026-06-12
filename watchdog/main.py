@@ -7,9 +7,12 @@ import asyncio
 import logging
 import os
 import sys
+import uuid
 
 import httpx
 from dotenv import load_dotenv
+
+from uz_watcher.uz_client import DEFAULT_HEADERS
 
 logging.basicConfig(
     level=logging.INFO,
@@ -32,7 +35,8 @@ async def check_main_bot(client: httpx.AsyncClient, bot_token: str) -> None:
 
 
 async def check_uz_api(client: httpx.AsyncClient) -> None:
-    resp = await client.get(UZ_STATIONS_URL, params={"search": "Київ"})
+    headers = {**DEFAULT_HEADERS, "x-session-id": str(uuid.uuid4())}
+    resp = await client.get(UZ_STATIONS_URL, params={"search": "Київ"}, headers=headers)
     if resp.status_code >= 400:
         raise HealthCheckError(f"UZ API unreachable: {resp.status_code} {resp.text[:200]}")
 
