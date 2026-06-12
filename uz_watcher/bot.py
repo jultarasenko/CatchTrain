@@ -38,8 +38,8 @@ class WatchForm(StatesGroup):
 
 def _station_keyboard(stations: list[dict], prefix: str) -> InlineKeyboardMarkup:
     buttons = [
-        [InlineKeyboardButton(text=s["name"], callback_data=f"{prefix}:{s['id']}:{s['name']}")]
-        for s in stations[:MAX_STATION_OPTIONS]
+        [InlineKeyboardButton(text=s["name"], callback_data=f"{prefix}:{i}")]
+        for i, s in enumerate(stations[:MAX_STATION_OPTIONS])
     ]
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
@@ -86,15 +86,18 @@ async def process_from_station(message: Message, state: FSMContext) -> None:
         return
 
     await state.set_state(WatchForm.choosing_from_station)
+    await state.update_data(from_stations=stations)
     await message.answer(texts.CHOOSE_STATION, reply_markup=_station_keyboard(stations, "from"))
 
 
 @router.callback_query(StateFilter(WatchForm.choosing_from_station), F.data.startswith("from:"))
 async def process_from_station_choice(callback: CallbackQuery, state: FSMContext) -> None:
-    _, station_id, station_name = callback.data.split(":", 2)
-    await state.update_data(from_id=int(station_id), from_name=station_name)
+    _, index = callback.data.split(":", 1)
+    data = await state.get_data()
+    station = data["from_stations"][int(index)]
+    await state.update_data(from_id=station["id"], from_name=station["name"])
     await state.set_state(WatchForm.to_station)
-    await callback.message.edit_text(f"{texts.CHOOSE_STATION}\n\n✅ {station_name}")
+    await callback.message.edit_text(f"{texts.CHOOSE_STATION}\n\n✅ {station['name']}")
     await callback.message.answer(texts.ASK_TO_STATION)
     await callback.answer()
 
@@ -110,15 +113,18 @@ async def process_to_station(message: Message, state: FSMContext) -> None:
         return
 
     await state.set_state(WatchForm.choosing_to_station)
+    await state.update_data(to_stations=stations)
     await message.answer(texts.CHOOSE_STATION, reply_markup=_station_keyboard(stations, "to"))
 
 
 @router.callback_query(StateFilter(WatchForm.choosing_to_station), F.data.startswith("to:"))
 async def process_to_station_choice(callback: CallbackQuery, state: FSMContext) -> None:
-    _, station_id, station_name = callback.data.split(":", 2)
-    await state.update_data(to_id=int(station_id), to_name=station_name)
+    _, index = callback.data.split(":", 1)
+    data = await state.get_data()
+    station = data["to_stations"][int(index)]
+    await state.update_data(to_id=station["id"], to_name=station["name"])
     await state.set_state(WatchForm.date)
-    await callback.message.edit_text(f"{texts.CHOOSE_STATION}\n\n✅ {station_name}")
+    await callback.message.edit_text(f"{texts.CHOOSE_STATION}\n\n✅ {station['name']}")
     await callback.message.answer(texts.ASK_DATE)
     await callback.answer()
 
