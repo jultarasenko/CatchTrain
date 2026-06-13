@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from pathlib import Path
 
 import aiosqlite
@@ -180,24 +181,70 @@ class Database:
                     SUM(CASE WHEN event_type = 'uz_api_error' THEN 1 ELSE 0 END)
                 FROM events
                 WHERE event_type IN ('poll_success', 'uz_api_error')
-                  AND created_at >= datetime('now', '-10 minutes')
+                  AND created_at >= datetime('now', '-1 hour')
                 """
             ) as cursor:
                 success_count, error_count = await cursor.fetchone()
+
+            async with db.execute(
+                """
+                SELECT subscription_id, created_at
+                FROM events
+                WHERE event_type IN ('poll_success', 'uz_api_error')
+                  AND created_at >= datetime('now', '-1 hour')
+                ORDER BY subscription_id, created_at
+                """
+            ) as cursor:
+                poll_rows = await cursor.fetchall()
+
+            async with db.execute(
+                """
+                SELECT subscription_id, MAX(created_at)
+                FROM events
+                WHERE event_type IN ('poll_success', 'uz_api_error')
+                GROUP BY subscription_id
+                """
+            ) as cursor:
+                last_poll_rows = await cursor.fetchall()
 
         success_count = success_count or 0
         error_count = error_count or 0
         total_polls = success_count + error_count
         unprocessed_pct = (error_count / total_polls * 100) if total_polls else 0.0
 
+        max_wait_seconds = 0.0
+        last_timestamp: dict[int, datetime] = {}
+        for sub_id, created_at in poll_rows:
+            ts = datetime.fromisoformat(created_at)
+            if sub_id in last_timestamp:
+                gap = (ts - last_timestamp[sub_id]).total_seconds()
+                max_wait_seconds = max(max_wait_seconds, gap)
+            last_timestamp[sub_id] = ts
+
+        active_sub_ids = {
+            sub["id"]
+            for sub in await self.get_all_subscriptions()
+            if sub["status"] == "active"
+        }
+        now = datetime.utcnow()
+        waiting_over_5min = 0
+        for sub_id, last_created_at in last_poll_rows:
+            if sub_id not in active_sub_ids:
+                continue
+            elapsed = (now - datetime.fromisoformat(last_created_at)).total_seconds()
+            if elapsed > 300:
+                waiting_over_5min += 1
+
         return {
             "active_requests": active_requests,
             "total_requests": total_requests,
             "active_users": active_users,
             "requests_per_user": requests_per_user,
-            "unprocessed_pct_10min": unprocessed_pct,
-            "polls_total_10min": total_polls,
-            "polls_failed_10min": error_count,
+            "unprocessed_pct_1h": unprocessed_pct,
+            "polls_total_1h": total_polls,
+            "polls_failed_1h": error_count,
+            "max_wait_seconds_1h": max_wait_seconds,
+            "users_waiting_over_5min": waiting_over_5min,
         }
 
     async def log_event(

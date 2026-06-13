@@ -94,9 +94,11 @@ def format_stats(stats: dict) -> str:
         f"Total subscriptions: {stats['total_requests']}\n"
         f"Active users: {stats['active_users']}\n\n"
         f"Subscriptions per user:\n{per_user_lines}\n\n"
-        f"UZ API polls (last 10 min): {stats['polls_total_10min']}\n"
-        f"Failed polls (last 10 min): {stats['polls_failed_10min']}\n"
-        f"Unprocessed rate (last 10 min): {stats['unprocessed_pct_10min']:.1f}%"
+        f"UZ API polls (last 1h): {stats['polls_total_1h']}\n"
+        f"Failed polls (last 1h): {stats['polls_failed_1h']}\n"
+        f"Unprocessed rate (last 1h): {stats['unprocessed_pct_1h']:.1f}%\n"
+        f"Max wait between requests (last 1h): {stats['max_wait_seconds_1h']:.0f}s\n"
+        f"Users waiting >5 min: {stats['users_waiting_over_5min']}"
     )
 
 

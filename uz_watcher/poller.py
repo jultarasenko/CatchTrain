@@ -15,6 +15,8 @@ from uz_watcher.uz_client import UZClient, UZClientError, extract_seat_summary
 
 logger = logging.getLogger(__name__)
 
+RETRY_DELAY_SECONDS = 5
+
 
 class PollerManager:
     """Starts and stops one asyncio task per subscription."""
@@ -73,6 +75,9 @@ class PollerManager:
                             subscription_id=sub_id,
                             status_code=exc.status_code,
                         )
+                        if exc.status_code in (429, 441):
+                            await asyncio.sleep(RETRY_DELAY_SECONDS)
+                            continue
                     except Exception:
                         logger.exception("Unexpected error polling subscription #%s", sub_id)
 
