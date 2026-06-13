@@ -13,7 +13,7 @@ from dotenv import load_dotenv
 from uz_watcher.bot import create_dispatcher
 from uz_watcher.db import Database
 from uz_watcher.poller import PollerManager
-from uz_watcher.scheduler import run_daily_jobs
+from uz_watcher.scheduler import run_daily_jobs, run_poll_event_pruning
 from uz_watcher.uz_client import KYIV_TZ
 from uz_watcher.validation import compute_status
 
@@ -50,12 +50,14 @@ async def main() -> None:
 
     dispatcher = create_dispatcher(db, pollers)
     scheduler_task = asyncio.create_task(run_daily_jobs(bot, db, pollers))
+    pruning_task = asyncio.create_task(run_poll_event_pruning(db))
 
     logger.info("Starting bot...")
     try:
         await dispatcher.start_polling(bot)
     finally:
         scheduler_task.cancel()
+        pruning_task.cancel()
 
 
 if __name__ == "__main__":

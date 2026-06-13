@@ -24,7 +24,8 @@ CREATE TABLE IF NOT EXISTS subscriptions (
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
-CREATE TABLE IF NOT EXISTS events (
+-- Bot-facing events: commands, messages, subscription lifecycle.
+CREATE TABLE IF NOT EXISTS bot_events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     event_type TEXT NOT NULL,
     chat_id INTEGER,
@@ -38,9 +39,23 @@ CREATE TABLE IF NOT EXISTS events (
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
-CREATE INDEX IF NOT EXISTS idx_events_type ON events (event_type);
-CREATE INDEX IF NOT EXISTS idx_events_created_at ON events (created_at);
+CREATE INDEX IF NOT EXISTS idx_bot_events_type ON bot_events (event_type);
+CREATE INDEX IF NOT EXISTS idx_bot_events_created_at ON bot_events (created_at);
+
+-- Poll-status events: per-subscription UZ API poll outcomes.
+CREATE TABLE IF NOT EXISTS poll_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_type TEXT NOT NULL,
+    subscription_id INTEGER,
+    status_code INTEGER,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_poll_events_type ON poll_events (event_type);
+CREATE INDEX IF NOT EXISTS idx_poll_events_created_at ON poll_events (created_at);
 """
+
+POLL_EVENT_TYPES = {"poll_success", "uz_api_error"}
 
 
 class Database:
@@ -58,6 +73,35 @@ class Database:
                 await db.execute(
                     "ALTER TABLE subscriptions ADD COLUMN status TEXT NOT NULL DEFAULT 'active'"
                 )
+
+            async with db.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='events'"
+            ) as cursor:
+                has_old_events = await cursor.fetchone() is not None
+            if has_old_events:
+                placeholders = ",".join("?" for _ in POLL_EVENT_TYPES)
+                await db.execute(
+                    f"""
+                    INSERT INTO poll_events (event_type, subscription_id, status_code, created_at)
+                    SELECT event_type, subscription_id, status_code, created_at
+                    FROM events WHERE event_type IN ({placeholders})
+                    """,
+                    tuple(POLL_EVENT_TYPES),
+                )
+                await db.execute(
+                    f"""
+                    INSERT INTO bot_events (
+                        event_type, chat_id, subscription_id, station_from_id,
+                        station_to_id, travel_date, train_number, status_code, extra, created_at
+                    )
+                    SELECT event_type, chat_id, subscription_id, station_from_id,
+                        station_to_id, travel_date, train_number, status_code, extra, created_at
+                    FROM events WHERE event_type NOT IN ({placeholders})
+                    """,
+                    tuple(POLL_EVENT_TYPES),
+                )
+                await db.execute("DROP TABLE events")
+
             await db.commit()
 
     async def add_subscription(
@@ -179,9 +223,8 @@ class Database:
                 SELECT
                     SUM(CASE WHEN event_type = 'poll_success' THEN 1 ELSE 0 END),
                     SUM(CASE WHEN event_type = 'uz_api_error' THEN 1 ELSE 0 END)
-                FROM events
-                WHERE event_type IN ('poll_success', 'uz_api_error')
-                  AND created_at >= datetime('now', '-1 hour')
+                FROM poll_events
+                WHERE created_at >= datetime('now', '-1 hour')
                 """
             ) as cursor:
                 success_count, error_count = await cursor.fetchone()
@@ -189,9 +232,8 @@ class Database:
             async with db.execute(
                 """
                 SELECT subscription_id, created_at
-                FROM events
-                WHERE event_type IN ('poll_success', 'uz_api_error')
-                  AND created_at >= datetime('now', '-1 hour')
+                FROM poll_events
+                WHERE created_at >= datetime('now', '-1 hour')
                 ORDER BY subscription_id, created_at
                 """
             ) as cursor:
@@ -200,8 +242,7 @@ class Database:
             async with db.execute(
                 """
                 SELECT subscription_id, MAX(created_at)
-                FROM events
-                WHERE event_type IN ('poll_success', 'uz_api_error')
+                FROM poll_events
                 GROUP BY subscription_id
                 """
             ) as cursor:
@@ -260,24 +301,45 @@ class Database:
         **extra,
     ) -> None:
         async with aiosqlite.connect(self._path) as db:
+            if event_type in POLL_EVENT_TYPES:
+                await db.execute(
+                    """
+                    INSERT INTO poll_events (event_type, subscription_id, status_code)
+                    VALUES (?, ?, ?)
+                    """,
+                    (event_type, subscription_id, status_code),
+                )
+            else:
+                await db.execute(
+                    """
+                    INSERT INTO bot_events (
+                        event_type, chat_id, subscription_id, station_from_id,
+                        station_to_id, travel_date, train_number, status_code, extra
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        event_type,
+                        chat_id,
+                        subscription_id,
+                        station_from_id,
+                        station_to_id,
+                        travel_date,
+                        str(train_number) if train_number is not None else None,
+                        status_code,
+                        json.dumps(extra, ensure_ascii=False) if extra else None,
+                    ),
+                )
+            await db.commit()
+
+    async def prune_poll_success_events(self) -> None:
+        """Delete poll_success rows older than 1 hour (uz_api_error rows are kept)."""
+        async with aiosqlite.connect(self._path) as db:
             await db.execute(
                 """
-                INSERT INTO events (
-                    event_type, chat_id, subscription_id, station_from_id,
-                    station_to_id, travel_date, train_number, status_code, extra
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    event_type,
-                    chat_id,
-                    subscription_id,
-                    station_from_id,
-                    station_to_id,
-                    travel_date,
-                    str(train_number) if train_number is not None else None,
-                    status_code,
-                    json.dumps(extra, ensure_ascii=False) if extra else None,
-                ),
+                DELETE FROM poll_events
+                WHERE event_type = 'poll_success'
+                  AND created_at < datetime('now', '-1 hour')
+                """
             )
             await db.commit()
 

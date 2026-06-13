@@ -63,6 +63,16 @@ async def activate_pending_subscriptions(db: Database, pollers: PollerManager) -
             logger.info("Activated subscription #%s", subscription["id"])
 
 
+async def run_poll_event_pruning(db: Database) -> None:
+    """Periodically delete poll_success rows older than 1 hour."""
+    while True:
+        try:
+            await db.prune_poll_success_events()
+        except Exception:
+            logger.exception("Poll event pruning failed")
+        await asyncio.sleep(3600)
+
+
 async def remove_expired_subscriptions(bot: Bot, db: Database, pollers: PollerManager) -> None:
     today = datetime.now(KYIV_TZ).date()
     for subscription in await db.get_all_subscriptions():
