@@ -49,6 +49,7 @@ class Database:
 
     async def init(self) -> None:
         async with aiosqlite.connect(self._path) as db:
+            await db.execute("PRAGMA journal_mode=WAL")
             await db.executescript(SCHEMA)
             async with db.execute("PRAGMA table_info(subscriptions)") as cursor:
                 columns = {row[1] async for row in cursor}
@@ -147,6 +148,57 @@ class Database:
                 (json.dumps(sorted(train_numbers), ensure_ascii=False), sub_id),
             )
             await db.commit()
+
+    async def get_stats(self) -> dict:
+        async with aiosqlite.connect(self._path) as db:
+            async with db.execute(
+                "SELECT COUNT(*) FROM subscriptions WHERE status = 'active'"
+            ) as cursor:
+                active_requests = (await cursor.fetchone())[0]
+
+            async with db.execute("SELECT COUNT(*) FROM subscriptions") as cursor:
+                total_requests = (await cursor.fetchone())[0]
+
+            async with db.execute(
+                "SELECT COUNT(DISTINCT chat_id) FROM subscriptions"
+            ) as cursor:
+                active_users = (await cursor.fetchone())[0]
+
+            async with db.execute(
+                "SELECT COUNT(*) FROM subscriptions GROUP BY chat_id"
+            ) as cursor:
+                rows = await cursor.fetchall()
+            requests_per_user = {"1": 0, "2": 0, "3": 0, "4": 0, "5+": 0}
+            for (count,) in rows:
+                key = str(count) if count < 5 else "5+"
+                requests_per_user[key] += 1
+
+            async with db.execute(
+                """
+                SELECT
+                    SUM(CASE WHEN event_type = 'poll_success' THEN 1 ELSE 0 END),
+                    SUM(CASE WHEN event_type = 'uz_api_error' THEN 1 ELSE 0 END)
+                FROM events
+                WHERE event_type IN ('poll_success', 'uz_api_error')
+                  AND created_at >= datetime('now', '-10 minutes')
+                """
+            ) as cursor:
+                success_count, error_count = await cursor.fetchone()
+
+        success_count = success_count or 0
+        error_count = error_count or 0
+        total_polls = success_count + error_count
+        unprocessed_pct = (error_count / total_polls * 100) if total_polls else 0.0
+
+        return {
+            "active_requests": active_requests,
+            "total_requests": total_requests,
+            "active_users": active_users,
+            "requests_per_user": requests_per_user,
+            "unprocessed_pct_10min": unprocessed_pct,
+            "polls_total_10min": total_polls,
+            "polls_failed_10min": error_count,
+        }
 
     async def log_event(
         self,

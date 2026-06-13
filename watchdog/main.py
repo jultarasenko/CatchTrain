@@ -1,5 +1,6 @@
 """Watchdog: periodically checks that the CatchTrain bot and the UZ API are
 reachable, and sends an alert via a separate Telegram bot if either fails.
+Also exposes a /stats command with usage statistics.
 """
 from __future__ import annotations
 
@@ -10,8 +11,12 @@ import sys
 import uuid
 
 import httpx
+from aiogram import Bot, Dispatcher
+from aiogram.filters import Command
+from aiogram.types import Message
 from dotenv import load_dotenv
 
+from uz_watcher.db import Database
 from uz_watcher.uz_client import DEFAULT_HEADERS
 
 logging.basicConfig(
@@ -78,12 +83,50 @@ async def run_check(client: httpx.AsyncClient, bot_token: str, watchdog_token: s
     return False
 
 
+def format_stats(stats: dict) -> str:
+    per_user = stats["requests_per_user"]
+    per_user_lines = "\n".join(
+        f"  {bucket}: {count} users" for bucket, count in per_user.items()
+    )
+    return (
+        "📊 CatchTrain stats\n\n"
+        f"Active subscriptions: {stats['active_requests']}\n"
+        f"Total subscriptions: {stats['total_requests']}\n"
+        f"Active users: {stats['active_users']}\n\n"
+        f"Subscriptions per user:\n{per_user_lines}\n\n"
+        f"UZ API polls (last 10 min): {stats['polls_total_10min']}\n"
+        f"Failed polls (last 10 min): {stats['polls_failed_10min']}\n"
+        f"Unprocessed rate (last 10 min): {stats['unprocessed_pct_10min']:.1f}%"
+    )
+
+
+def create_dispatcher(db: Database) -> Dispatcher:
+    dispatcher = Dispatcher()
+
+    @dispatcher.message(Command("stats"))
+    async def cmd_stats(message: Message) -> None:
+        stats = await db.get_stats()
+        await message.answer(format_stats(stats))
+
+    return dispatcher
+
+
+async def run_health_checks(bot_token: str, watchdog_token: str, chat_id: str) -> None:
+    was_down = False
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        logger.info("Starting health checks (interval: %ss)...", CHECK_INTERVAL)
+        while True:
+            was_down = await run_check(client, bot_token, watchdog_token, chat_id, was_down)
+            await asyncio.sleep(CHECK_INTERVAL)
+
+
 async def main() -> None:
     load_dotenv()
 
     bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
     watchdog_token = os.getenv("WATCHDOG_BOT_TOKEN")
     chat_id = os.getenv("ALERT_CHAT_ID")
+    db_path = os.getenv("DATABASE_PATH", "/data/subscriptions.db")
 
     missing = [
         name for name, value in (
@@ -96,12 +139,17 @@ async def main() -> None:
         logger.error("Missing required environment variables: %s", ", ".join(missing))
         sys.exit(1)
 
-    was_down = False
-    async with httpx.AsyncClient(timeout=15.0) as client:
-        logger.info("Starting watchdog (interval: %ss)...", CHECK_INTERVAL)
-        while True:
-            was_down = await run_check(client, bot_token, watchdog_token, chat_id, was_down)
-            await asyncio.sleep(CHECK_INTERVAL)
+    db = Database(db_path)
+    await db.init()
+
+    bot = Bot(token=watchdog_token)
+    dispatcher = create_dispatcher(db)
+
+    health_task = asyncio.create_task(run_health_checks(bot_token, watchdog_token, chat_id))
+    try:
+        await dispatcher.start_polling(bot)
+    finally:
+        health_task.cancel()
 
 
 if __name__ == "__main__":

@@ -46,6 +46,11 @@ class PollerManager:
                 while True:
                     try:
                         await self._check_once(client, subscription, notified)
+                        await record_event(
+                            self._db,
+                            "poll_success",
+                            subscription_id=sub_id,
+                        )
                     except TelegramForbiddenError:
                         logger.warning(
                             "Bot blocked by user, removing subscription #%s (chat %s)",
