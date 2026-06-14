@@ -88,6 +88,8 @@ def format_stats(stats: dict) -> str:
     per_user_lines = "\n".join(
         f"  {bucket}: {count} users" for bucket, count in per_user.items()
     )
+    max_wait_sub_id = stats["max_wait_subscription_id"]
+    max_wait_suffix = f" (subscription #{max_wait_sub_id})" if max_wait_sub_id is not None else ""
     return (
         "📊 CatchTrain stats\n\n"
         f"Active subscriptions: {stats['active_requests']}\n"
@@ -97,8 +99,9 @@ def format_stats(stats: dict) -> str:
         f"UZ API polls (last 1h): {stats['polls_total_1h']}\n"
         f"Failed polls (last 1h): {stats['polls_failed_1h']}\n"
         f"Unprocessed rate (last 1h): {stats['unprocessed_pct_1h']:.1f}%\n"
-        f"Max wait between requests (last 1h): {stats['max_wait_seconds_1h']:.0f}s\n"
-        f"Users waiting >5 min: {stats['users_waiting_over_5min']}"
+        f"Max wait between requests (last 1h): {stats['max_wait_seconds_1h']:.0f}s{max_wait_suffix}\n"
+        f"Current refresh interval: {stats['check_interval_minutes']} min\n"
+        f"Users waiting >{stats['long_wait_threshold_minutes']} min: {stats['users_waiting_too_long']}"
     )
 
 
