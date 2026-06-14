@@ -41,14 +41,18 @@ async def main() -> None:
     today = datetime.now(KYIV_TZ).date()
     pollers = PollerManager(bot, db)
     for subscription in await db.get_all_subscriptions():
-        correct_status = compute_status(subscription["travel_date"], today)
-        if correct_status != subscription["status"]:
-            await db.update_status(subscription["id"], correct_status)
-            subscription["status"] = correct_status
+        if subscription["status"] in ("active", "pending"):
+            correct_status = compute_status(subscription["travel_date"], today)
+            if correct_status != subscription["status"]:
+                await db.update_status(subscription["id"], correct_status)
+                subscription["status"] = correct_status
         if subscription["status"] == "active":
             pollers.start(subscription)
 
-    dispatcher = create_dispatcher(db, pollers)
+    watchdog_token = os.getenv("WATCHDOG_BOT_TOKEN")
+    feedback_bot = Bot(token=watchdog_token) if watchdog_token else None
+
+    dispatcher = create_dispatcher(db, pollers, feedback_bot)
     scheduler_task = asyncio.create_task(run_daily_jobs(bot, db, pollers))
     pruning_task = asyncio.create_task(run_poll_event_pruning(db))
 
@@ -58,6 +62,8 @@ async def main() -> None:
     finally:
         scheduler_task.cancel()
         pruning_task.cancel()
+        if feedback_bot is not None:
+            await feedback_bot.session.close()
 
 
 if __name__ == "__main__":
