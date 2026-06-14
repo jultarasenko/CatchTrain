@@ -1,6 +1,7 @@
 from datetime import date
 
 from uz_watcher.validation import (
+    compute_check_interval_minutes,
     compute_status,
     is_past_date,
     is_valid_date,
@@ -53,3 +54,11 @@ def test_compute_status_pending_beyond_window():
     today = date(2026, 6, 11)
     assert compute_status("2026-07-01", today) == "pending"
     assert compute_status("2026-07-15", today) == "pending"
+
+
+def test_compute_check_interval_minutes():
+    assert compute_check_interval_minutes(0) == 1
+    assert compute_check_interval_minutes(1) == 1
+    assert compute_check_interval_minutes(15) == 1
+    assert compute_check_interval_minutes(16) == 2
+    assert compute_check_interval_minutes(57) == 4
