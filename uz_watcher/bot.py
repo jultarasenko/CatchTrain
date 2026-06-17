@@ -216,6 +216,12 @@ async def process_feedback(message: Message, state: FSMContext, db: Database, fe
                 await feedback_bot.send_message(
                     alert_chat_id,
                     f"📝 Відгук від {message.chat.id}:\n\n{text}",
+                    reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                        InlineKeyboardButton(
+                            text="↩️ Відповісти",
+                            callback_data=f"reply_feedback:{message.chat.id}",
+                        )
+                    ]]),
                 )
                 sent = True
             except Exception:

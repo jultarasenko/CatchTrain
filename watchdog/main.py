@@ -11,9 +11,11 @@ import sys
 import uuid
 
 import httpx
-from aiogram import Bot, Dispatcher
+from aiogram import Bot, Dispatcher, F
 from aiogram.filters import Command
-from aiogram.types import Message
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
+from aiogram.types import CallbackQuery, Message
 from dotenv import load_dotenv
 
 from uz_watcher.db import Database
@@ -105,13 +107,55 @@ def format_stats(stats: dict) -> str:
     )
 
 
-def create_dispatcher(db: Database) -> Dispatcher:
+class ReplyForm(StatesGroup):
+    awaiting_text = State()
+
+
+def create_dispatcher(db: Database, main_bot: Bot) -> Dispatcher:
     dispatcher = Dispatcher()
 
     @dispatcher.message(Command("stats"))
     async def cmd_stats(message: Message) -> None:
         stats = await db.get_stats()
         await message.answer(format_stats(stats))
+
+    @dispatcher.message(Command("reply"))
+    async def cmd_reply(message: Message) -> None:
+        # Usage: /reply <chat_id> <text>
+        parts = (message.text or "").split(maxsplit=2)
+        if len(parts) < 3:
+            await message.answer("Usage: /reply <chat_id> <text>")
+            return
+        try:
+            target_chat_id = int(parts[1])
+        except ValueError:
+            await message.answer(f"Invalid chat_id: {parts[1]}")
+            return
+        reply_text = parts[2]
+        try:
+            await main_bot.send_message(target_chat_id, reply_text)
+            await message.answer(f"✅ Sent to {target_chat_id}")
+        except Exception as exc:
+            await message.answer(f"❌ Failed: {exc}")
+
+    @dispatcher.callback_query(F.data.startswith("reply_feedback:"))
+    async def on_reply_button(callback: CallbackQuery, state: FSMContext) -> None:
+        target_chat_id = int(callback.data.split(":", 1)[1])
+        await state.set_state(ReplyForm.awaiting_text)
+        await state.update_data(target_chat_id=target_chat_id)
+        await callback.message.answer(f"Введіть відповідь для {target_chat_id}:")
+        await callback.answer()
+
+    @dispatcher.message(ReplyForm.awaiting_text)
+    async def on_reply_text(message: Message, state: FSMContext) -> None:
+        data = await state.get_data()
+        target_chat_id = data["target_chat_id"]
+        await state.clear()
+        try:
+            await main_bot.send_message(target_chat_id, message.text or "")
+            await message.answer(f"✅ Відповідь надіслано до {target_chat_id}")
+        except Exception as exc:
+            await message.answer(f"❌ Не вдалося надіслати: {exc}")
 
     return dispatcher
 
@@ -148,13 +192,15 @@ async def main() -> None:
     await db.init()
 
     bot = Bot(token=watchdog_token)
-    dispatcher = create_dispatcher(db)
+    main_bot = Bot(token=bot_token)
+    dispatcher = create_dispatcher(db, main_bot)
 
     health_task = asyncio.create_task(run_health_checks(bot_token, watchdog_token, chat_id))
     try:
         await dispatcher.start_polling(bot)
     finally:
         health_task.cancel()
+        await main_bot.session.close()
 
 
 if __name__ == "__main__":
